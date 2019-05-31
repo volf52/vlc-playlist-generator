@@ -1,63 +1,54 @@
-import argparse
 import os
 import subprocess
-import lxml.etree as ET
-from typing import List, Tuple
 import sys
+from typing import List, Tuple
 from urllib.request import pathname2url, url2pathname
+
+import click
+import lxml.etree as ET
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
 
-def generate():
-    args = get_args()
-    root_dir = args.root_dir
+@click.command()
+@click.option(
+    "-f",
+    "--file-name",
+    "fname",
+    help="The filename for playlist (Default = dir name)",
+    type=click.STRING,
+)
+@click.argument("root_dir", required=True)
+def generate(fname, root_dir):
     if root_dir is None:
         root_dir = os.getcwd()
     file_paths, encoded_paths = get_files(root_dir)
     fname = os.path.basename(root_dir)
-    if args.fname is not None:
-        fname = args.fname
-
+    if fname is None:
+        fname = os.path.basename(root_dir)
+    fname = os.path.join(os.path.dirname(root_dir), fname)
     xml_txt = get_xml(fname, file_paths, encoded_paths)
-    # print(xml_txt)
     with open(f"{fname}.xspf", "wb") as f:
         f.write(xml_txt)
-
-
-def get_args():
-    parser = argparse.ArgumentParser(add_help=True)
-    parser.add_argument(
-        "-d",
-        "--directory",
-        action="store",
-        dest="root_dir",
-        help="The directory with files (Default = current dir)",
-    )
-    parser.add_argument(
-        "-f",
-        "--file",
-        action="store",
-        dest="fname",
-        help="The filename for playlist (Default = dir name)",
-    )
-    return parser.parse_args()
 
 
 def get_files(root_dir: str) -> Tuple[List[str], List[str]]:
     ret_list = [
         os.path.join(root, f) for root, dirs, files in os.walk(root_dir) for f in files
     ]
+    # ret_list = list(
+    #     sorted(ret_list, key=lambda x: int(os.path.basename(x).strip().split("-")[0]))
+    # )
     encoded_list = [f"file:{pathname2url(x)}" for x in ret_list]
     return ret_list, encoded_list
 
 
-def get_xml(dirname: str, file_list: list, encoded_list: list) -> bytes:
+def get_xml(fname: str, file_list: list, encoded_list: list) -> bytes:
     NSMAP = {
         None: "http://xspf.org/ns/0/",
         "vlc": "http://www.videolan.org/vlc/playlist/ns/0/",
     }
     playlist = ET.Element("playlist", version="1", nsmap=NSMAP)
-    ET.SubElement(playlist, "title").text = dirname
+    ET.SubElement(playlist, "title").text = fname
     tracklist = ET.SubElement(playlist, "trackList")
 
     for i, (normal_name, encoded_name) in enumerate(zip(file_list, encoded_list)):
