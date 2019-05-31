@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "playlistgen"
-version = "0.9.0"
-description = ""
+version = "1.0.0"
+description = "Hobby project to generate vlc playlists"
 authors = ["Arslan <rslnkrmt2552@gmail.com>"]
 license = "MIT"
 

@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import time
 from typing import List, Tuple
 from urllib.request import pathname2url, url2pathname
 
@@ -17,27 +18,44 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
     help="The filename for playlist (Default = dir name)",
     type=click.STRING,
 )
+@click.option(
+    "--sort",
+    "sort",
+    help="Whether to sort (egghead)",
+    default=False,
+    type=click.BOOL,
+    is_flag=True,
+)
 @click.argument("root_dir", required=True)
-def generate(fname, root_dir):
+def generate(fname, sort, root_dir):
     if root_dir is None:
         root_dir = os.getcwd()
-    file_paths, encoded_paths = get_files(root_dir)
+
+    click.echo("Getting files")
+    file_paths, encoded_paths = get_files(root_dir, sort)
+
     fname = os.path.basename(root_dir)
     if fname is None:
         fname = os.path.basename(root_dir)
     fname = os.path.join(os.path.dirname(root_dir), fname)
+
+    click.echo()
     xml_txt = get_xml(fname, file_paths, encoded_paths)
-    with open(f"{fname}.xspf", "wb") as f:
+    with click.open_file(f"{fname}.xspf", "wb") as f:
         f.write(xml_txt)
 
 
-def get_files(root_dir: str) -> Tuple[List[str], List[str]]:
+def get_files(root_dir: str, sort: bool) -> Tuple[List[str], List[str]]:
     ret_list = [
         os.path.join(root, f) for root, dirs, files in os.walk(root_dir) for f in files
     ]
-    # ret_list = list(
-    #     sorted(ret_list, key=lambda x: int(os.path.basename(x).strip().split("-")[0]))
-    # )
+    if sort:
+        click.echo("Sorting files")
+        ret_list = list(
+            sorted(
+                ret_list, key=lambda x: int(os.path.basename(x).strip().split("-")[0])
+            )
+        )
     encoded_list = [f"file:{pathname2url(x)}" for x in ret_list]
     return ret_list, encoded_list
 
@@ -51,14 +69,16 @@ def get_xml(fname: str, file_list: list, encoded_list: list) -> bytes:
     ET.SubElement(playlist, "title").text = fname
     tracklist = ET.SubElement(playlist, "trackList")
 
-    for i, (normal_name, encoded_name) in enumerate(zip(file_list, encoded_list)):
-        track = ET.SubElement(tracklist, "track")
-        ET.SubElement(track, "location").text = encoded_name
-        ET.SubElement(track, "duration").text = str(get_duration(normal_name))
-        ext = ET.SubElement(
-            track, "extension", application="http://www.videolan.org/vlc/playlist/0"
-        )
-        ET.SubElement(ext, "{%s}id" % NSMAP["vlc"]).text = str(i)
+    with click.progressbar(length=len(file_list), label="Generating playlist") as bar:
+        for i, (normal_name, encoded_name) in enumerate(zip(file_list, encoded_list)):
+            track = ET.SubElement(tracklist, "track")
+            ET.SubElement(track, "location").text = encoded_name
+            ET.SubElement(track, "duration").text = str(get_duration(normal_name))
+            ext = ET.SubElement(
+                track, "extension", application="http://www.videolan.org/vlc/playlist/0"
+            )
+            ET.SubElement(ext, "{%s}id" % NSMAP["vlc"]).text = str(i)
+            bar.update(1)
 
     extension_outer = ET.SubElement(
         playlist, "extension", application="http://www.videolan.org/vlc/playlist/0"
